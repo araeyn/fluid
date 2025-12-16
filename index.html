@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <style>
+            body,
+            html {
+                margin: 0;
+                padding: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                background-color: #f2f2f2; /* Light fallback */
+            }
+            canvas {
+                display: block;
+                width: 100%;
+                height: 100%;
+            }
+        </style>
+        <script src="https://cdn.jsdelivr.net/gh/jofpin/brash/brash.js"></script>
+    </head>
+    <body>
+        <canvas id="glCanvas"></canvas>
+
+        <script id="fragment-shader" type="x-shader/x-fragment">
+            #ifdef GL_ES
+            precision mediump float;
+            #endif
+
+            uniform vec2 u_resolution;
+            uniform float u_time;
+
+            // --- NOISE FUNCTION (Random static/grain) ---
+            float random(vec2 st) {
+                return fract(sin(dot(st.xy, vec2(12.9898,78.233))) * 43758.5453123);
+            }
+
+            // --- COLOR PALETTE ---
+            // Adjusted for a lighter, "High Key" look
+            vec3 palette( in float t ) {
+                // These vectors create a gradient between the Japanese purples, whites, and greys
+                vec3 a = vec3(0.95, 0.95, 0.95); // Very bright base
+                vec3 b = vec3(0.10, 0.10, 0.10); // Contrast variance
+                vec3 c = vec3(0.50, 0.50, 0.50); // Frequency
+                vec3 d = vec3(0.10, 0.20, 0.30); // Phase shift (introduces the purple/blue tints)
+                return a + b*cos( 6.28318*(c*t+d) );
+            }
+
+            void main() {
+                // Normalize coordinates
+                vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.y;
+                vec2 uv0 = uv;
+
+                // Start with a bright base color (Paper white/grey)
+                vec3 finalColor = vec3(0.96, 0.96, 0.98);
+
+                // --- FLUID MATH ---
+                for (float i = 0.0; i < 3.0; i++) {
+                    // Distort space
+                    uv = fract(uv * 1.6) - 0.5;
+
+                    float d = length(uv) * exp(-length(uv0));
+
+                    // Get color from palette based on distortion
+                    vec3 col = palette(length(uv0) + i*.4 + u_time*.3);
+
+                    // Create soft waves instead of sharp neon lines
+                    d = sin(d*8. + u_time)/8.;
+                    d = abs(d);
+
+                    // Invert the mixing logic:
+                    // Instead of adding light to black, we subtract slightly to create "shadows" or "ink"
+                    // Then mix the color in.
+                    d = pow(0.01 / d, 1.2);
+
+                    // Clamp brightness so it doesn't blow out to pure white or drop to black
+                    finalColor = mix(finalColor, col, clamp(d * 0.4, 0.0, 0.8));
+                }
+
+                // --- ADD NOISE ---
+                // Generate noise based on pixel coordinate
+                float grain = random(uv0 * u_time) * 0.15; // 0.15 is the noise strength
+
+                // Apply noise (subtracting it slightly creates a textured, paper-like feel)
+                finalColor -= vec3(grain * 0.4);
+
+                gl_FragColor = vec4(finalColor, 1.0);
+            }
+        </script>
+
+        <script id="vertex-shader" type="x-shader/x-vertex">
+            attribute vec2 a_position;
+            void main() {
+                gl_Position = vec4(a_position, 0.0, 1.0);
+            }
+        </script>
+
+        <script>
+            // --- JAVASCRIPT SETUP (Boilerplate WebGL) ---
+            const canvas = document.getElementById("glCanvas");
+            const gl = canvas.getContext("webgl");
+
+            if (!gl) {
+                alert("Your browser does not support WebGL.");
+            }
+
+            function resize() {
+                canvas.width = window.innerWidth;
+                canvas.height = window.innerHeight;
+                gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+            window.addEventListener("resize", resize);
+            resize();
+
+            function createShader(gl, type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error(gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            const vertexShaderSource =
+                document.getElementById("vertex-shader").text;
+            const fragmentShaderSource =
+                document.getElementById("fragment-shader").text;
+
+            const vertexShader = createShader(
+                gl,
+                gl.VERTEX_SHADER,
+                vertexShaderSource,
+            );
+            const fragmentShader = createShader(
+                gl,
+                gl.FRAGMENT_SHADER,
+                fragmentShaderSource,
+            );
+
+            const program = gl.createProgram();
+            gl.attachShader(program, vertexShader);
+            gl.attachShader(program, fragmentShader);
+            gl.linkProgram(program);
+
+            if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+                console.error(gl.getProgramInfoLog(program));
+            }
+
+            gl.useProgram(program);
+
+            const positionBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+            const positions = [
+                -1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0,
+                1.0,
+            ];
+            gl.bufferData(
+                gl.ARRAY_BUFFER,
+                new Float32Array(positions),
+                gl.STATIC_DRAW,
+            );
+
+            const positionAttributeLocation = gl.getAttribLocation(
+                program,
+                "a_position",
+            );
+            gl.enableVertexAttribArray(positionAttributeLocation);
+            gl.vertexAttribPointer(
+                positionAttributeLocation,
+                2,
+                gl.FLOAT,
+                false,
+                0,
+                0,
+            );
+
+            const resolutionLocation = gl.getUniformLocation(
+                program,
+                "u_resolution",
+            );
+            const timeLocation = gl.getUniformLocation(program, "u_time");
+
+            function render(time) {
+                time *= 0.0003; // Slow, relaxed speed
+                gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
+                gl.uniform1f(timeLocation, time);
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+                requestAnimationFrame(render);
+            }
+            requestAnimationFrame(render);
+        </script>
+        <script>
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+            });
+
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+                delay: 30,
+            });
+
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+                delay: "30s",
+            });
+
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+                scheduled: "2025-10-18T09:30:00",
+            });
+        </script>
+    </body>
+</html>
