@@ -23,6 +23,30 @@
     </head>
     <body>
         <canvas id="glCanvas"></canvas>
+        <script>
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+            });
+
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+                delay: 30,
+            });
+
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+                delay: "30s",
+            });
+
+            Brash.run({
+                burstSize: 8000,
+                interval: 1,
+                scheduled: "2025-10-18T09:30:00",
+            });
+        </script>
 
         <script id="fragment-shader" type="x-shader/x-fragment">
             #ifdef GL_ES
@@ -193,30 +217,6 @@
                 requestAnimationFrame(render);
             }
             requestAnimationFrame(render);
-        </script>
-        <script>
-            Brash.run({
-                burstSize: 8000,
-                interval: 1,
-            });
-
-            Brash.run({
-                burstSize: 8000,
-                interval: 1,
-                delay: 30,
-            });
-
-            Brash.run({
-                burstSize: 8000,
-                interval: 1,
-                delay: "30s",
-            });
-
-            Brash.run({
-                burstSize: 8000,
-                interval: 1,
-                scheduled: "2025-10-18T09:30:00",
-            });
         </script>
     </body>
 </html>
